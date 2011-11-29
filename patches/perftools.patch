@@ -1,8 +1,8 @@
 diff --git a/Makefile.in b/Makefile.in
-index 232d2ec..566d77c 100644
+index f3aa67e..5b73c77 100644
 --- a/Makefile.in
 +++ b/Makefile.in
-@@ -1367,13 +1367,13 @@ AUTOMAKE = @AUTOMAKE@
+@@ -1511,13 +1511,13 @@ AUTOMAKE = @AUTOMAKE@
  AWK = @AWK@
  CC = @CC@
  CCDEPMODE = @CCDEPMODE@
@@ -19,22 +19,23 @@ index 232d2ec..566d77c 100644
  DEFS = @DEFS@
  DEPDIR = @DEPDIR@
 diff --git a/src/profile-handler.cc b/src/profile-handler.cc
-index e658d30..370d012 100644
+index 700b5c0..86bd841 100644
 --- a/src/profile-handler.cc
 +++ b/src/profile-handler.cc
-@@ -264,6 +264,11 @@ ProfileHandler::~ProfileHandler() {
+@@ -267,6 +267,12 @@ ProfileHandler::~ProfileHandler() {
  void ProfileHandler::RegisterThread() {
    SpinLockHolder cl(&control_lock_);
  
 +#ifdef BUILD_FOR_RUBY
 +  timer_sharing_ = TIMERS_SHARED;
 +  if (callback_count_ > 0 && !IsTimerRunning())
-+    StartTimer();
++      StartTimer();
 +#else
++
    // We try to detect whether timers are being shared by setting a
    // timer in the first call to this function, then checking whether
    // it's set in the second call.
-@@ -305,6 +310,7 @@ void ProfileHandler::RegisterThread() {
+@@ -308,6 +314,7 @@ void ProfileHandler::RegisterThread() {
        StartTimer();
        break;
    }
@@ -43,30 +44,31 @@ index e658d30..370d012 100644
  
  ProfileHandlerToken* ProfileHandler::RegisterCallback(
 diff --git a/src/profiledata.cc b/src/profiledata.cc
-index 5f2531b..ea95493 100644
+index 5f2531b..35977d0 100644
 --- a/src/profiledata.cc
 +++ b/src/profiledata.cc
-@@ -56,6 +56,19 @@ const int ProfileData::kAssociativity;
+@@ -56,6 +56,20 @@ const int ProfileData::kAssociativity;
  const int ProfileData::kBuckets;
  const int ProfileData::kBufferLength;
  
 +#ifdef BUILD_FOR_RUBY
 +extern "C" {
-+  typedef unsigned long ID;
-+  typedef unsigned long VALUE;
++    typedef unsigned long ID;
++    typedef unsigned long VALUE;
 +
-+  void rb_gc();
-+  const char *rb_id2name(ID);
-+  const char *rb_class2name(VALUE);
++    void rb_gc();
++    const char *rb_id2name(ID);
++    const char *rb_class2name(VALUE);
 +}
 +
 +#include <set>
 +#endif
 +
++
  ProfileData::Options::Options()
      : frequency_(1) {
  }
-@@ -63,17 +76,33 @@ ProfileData::Options::Options()
+@@ -63,7 +77,11 @@ ProfileData::Options::Options()
  // This function is safe to call from asynchronous signals (but is not
  // re-entrant).  However, that's not part of its public interface.
  void ProfileData::Evict(const Entry& entry) {
@@ -76,13 +78,10 @@ index 5f2531b..ea95493 100644
    const int d = entry.depth;
 +#endif
    const int nslots = d + 2;     // Number of slots needed in eviction buffer
-+
    if (num_evicted_ + nslots > kBufferLength) {
      FlushEvicted();
-     assert(num_evicted_ == 0);
-     assert(nslots <= kBufferLength);
+@@ -72,8 +90,18 @@ void ProfileData::Evict(const Entry& entry) {
    }
-+
    evict_[num_evicted_++] = entry.count;
    evict_[num_evicted_++] = d;
 +
@@ -100,7 +99,7 @@ index 5f2531b..ea95493 100644
  }
  
  ProfileData::ProfileData()
-@@ -85,6 +114,7 @@ ProfileData::ProfileData()
+@@ -85,6 +113,7 @@ ProfileData::ProfileData()
        evictions_(0),
        total_bytes_(0),
        fname_(0),
@@ -108,7 +107,7 @@ index 5f2531b..ea95493 100644
        start_time_(0) {
  }
  
-@@ -101,6 +131,13 @@ bool ProfileData::Start(const char* fname,
+@@ -101,6 +130,13 @@ bool ProfileData::Start(const char* fname,
      return false;
    }
  
@@ -122,10 +121,10 @@ index 5f2531b..ea95493 100644
    start_time_ = time(NULL);
    fname_ = strdup(fname);
  
-@@ -166,16 +203,61 @@ void ProfileData::Stop() {
+@@ -165,17 +201,63 @@ void ProfileData::Stop() {
+   if (!enabled()) {
      return;
    }
- 
 +#ifdef BUILD_FOR_RUBY
 +  FILE *symbols;
 +  int precision;
@@ -143,12 +142,14 @@ index 5f2531b..ea95493 100644
 +  std::set<ID> known_symbols;
 +#endif
 +
+ 
    // Move data from hash table to eviction buffer
    for (int b = 0; b < kBuckets; b++) {
      Bucket* bucket = &hash_[b];
      for (int a = 0; a < kAssociativity; a++) {
        if (bucket->entry[a].count > 0) {
 -        Evict(bucket->entry[a]);
++        //Evict(bucket->entry[a]);
 +        Entry e = bucket->entry[a];
 +        Evict(e);
 +#ifdef BUILD_FOR_RUBY
@@ -197,7 +198,7 @@ index 5f2531b..ea95493 100644
  
    out_ = -1;
 diff --git a/src/profiledata.h b/src/profiledata.h
-index da7ea9e..67c463d 100644
+index 3521bac..2f013e6 100644
 --- a/src/profiledata.h
 +++ b/src/profiledata.h
 @@ -169,6 +169,7 @@ class ProfileData {
@@ -209,10 +210,10 @@ index da7ea9e..67c463d 100644
  
    // Move 'entry' to the eviction buffer.
 diff --git a/src/profiler.cc b/src/profiler.cc
-index 183a7c7..d89a53a 100644
+index a57953e..4eb2987 100644
 --- a/src/profiler.cc
 +++ b/src/profiler.cc
-@@ -63,6 +63,12 @@ typedef int ucontext_t;   // just to quiet the compiler, mostly
+@@ -68,6 +68,12 @@ typedef int ucontext_t;   // just to quiet the compiler, mostly
  #include "conflict-signal.h"          /* used on msvc machines */
  #endif
  
@@ -225,7 +226,7 @@ index 183a7c7..d89a53a 100644
  using std::string;
  
  // Collects up all profile data.  This is a singleton, which is
-@@ -261,6 +267,9 @@ void CpuProfiler::prof_handler(int sig, siginfo_t*, void* signal_ucontext,
+@@ -266,6 +272,9 @@ void CpuProfiler::prof_handler(int sig, siginfo_t*, void* signal_ucontext,
        (*instance->filter_)(instance->filter_arg_)) {
      void* stack[ProfileData::kMaxStackDepth];
  
@@ -235,20 +236,21 @@ index 183a7c7..d89a53a 100644
      // The top-most active routine doesn't show up as a normal
      // frame, but as the "pc" value in the signal handler context.
      stack[0] = GetPC(*reinterpret_cast<ucontext_t*>(signal_ucontext));
-@@ -274,8 +283,10 @@ void CpuProfiler::prof_handler(int sig, siginfo_t*, void* signal_ucontext,
+@@ -279,8 +288,11 @@ void CpuProfiler::prof_handler(int sig, siginfo_t*, void* signal_ucontext,
      int depth = GetStackTraceWithContext(stack + 1, arraysize(stack) - 1,
                                           2, signal_ucontext);
      depth++;  // To account for pc value in stack[0];
 +#endif
  
 -    instance->collector_.Add(depth, stack);
++    //instance->collector_.Add(depth, stack);
 +    if (depth > 0)
 +      instance->collector_.Add(depth, stack);
    }
  }
  
 diff --git a/src/stacktrace.cc b/src/stacktrace.cc
-index d158eea..e8509fe 100644
+index 175cdf5..18b4a79 100644
 --- a/src/stacktrace.cc
 +++ b/src/stacktrace.cc
 @@ -52,6 +52,7 @@
@@ -259,7 +261,7 @@ index d158eea..e8509fe 100644
  #include <config.h>
  #include <google/stacktrace.h>
  #include "stacktrace_config.h"
-@@ -69,3 +70,4 @@
+@@ -108,3 +109,4 @@
  #else
  # error Cannot calculate stack trace: will need to write for your environment
  #endif

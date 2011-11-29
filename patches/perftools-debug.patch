@@ -1,8 +1,8 @@
 diff --git a/Makefile.in b/Makefile.in
-index c3bf409..c613939 100644
+index d6bb923..fb09301 100644
 --- a/Makefile.in
 +++ b/Makefile.in
-@@ -1367,13 +1367,13 @@ AUTOMAKE = @AUTOMAKE@
+@@ -1512,13 +1512,13 @@ AUTOMAKE = @AUTOMAKE@
  AWK = @AWK@
  CC = @CC@
  CCDEPMODE = @CCDEPMODE@
