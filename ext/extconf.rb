@@ -33,35 +33,37 @@ dir = File.basename(perftools, '.tar.gz')
 puts "(I'm about to compile google-perftools.. this will definitely take a while)"
 ENV["PATCH_GET"] = '0'
 
+need_build = !`uname -v`.index('Ubuntu')
 Dir.chdir('src') do
-  FileUtils.rm_rf(dir) if File.exists?(dir)
+  if need_build
+    FileUtils.rm_rf(dir) if File.exists?(dir)
 
-puts `pwd`
-  sys("tar zpxvf #{perftools}")
-  Dir.chdir(dir) do
-    if ENV['DEV']
-      sys("git init")
-      sys("git add .")
-      sys("git commit -m 'initial source'")
-    end
-
-    [ ['perftools', true],
-      ['perftools-notests', true],
-      ['perftools-pprof', true],
-      ['perftools-gc', true],
-      ['perftools-osx', RUBY_PLATFORM =~ /darwin/],
-      ['perftools-debug', true],
-      ['perftools-objects', true],
-      ['perftools-frames', true]
-    ].each do |patch, apply|
-      if apply
-        sys("patch -p1 < ../../../patches/#{patch}.patch")
-        sys("git commit -am '#{patch}'") if ENV['DEV']
+    sys("tar zpxvf #{perftools}")
+    Dir.chdir(dir) do
+      if ENV['DEV']
+        sys("git init")
+        sys("git add .")
+        sys("git commit -m 'initial source'")
       end
-    end
 
-    sys("sed -i -e 's,SpinLock,ISpinLock,g' src/*.cc src/*.h src/base/*.cc src/base/*.h")
-    sys("git commit -am 'rename spinlock'") if ENV['DEV']
+      [ ['perftools', true],
+        ['perftools-notests', true],
+        ['perftools-pprof', true],
+        ['perftools-gc', true],
+        ['perftools-osx', RUBY_PLATFORM =~ /darwin/],
+        ['perftools-debug', true],
+        ['perftools-objects', true],
+        ['perftools-frames', true]
+      ].each do |patch, apply|
+        if apply
+          sys("patch -p1 < ../../../patches/#{patch}.patch")
+          sys("git commit -am '#{patch}'") if ENV['DEV']
+        end
+      end
+
+      sys("sed -i -e 's,SpinLock,ISpinLock,g' src/*.cc src/*.h src/base/*.cc src/base/*.h")
+      sys("git commit -am 'rename spinlock'") if ENV['DEV']
+    end
   end
 
   Dir.chdir(dir) do
@@ -70,11 +72,13 @@ puts `pwd`
   end
 
   Dir.chdir(dir) do
-    if RUBY_PLATFORM =~ /darwin10/
-      ENV['CFLAGS'] = ENV['CXXFLAGS'] = '-D_XOPEN_SOURCE'
+    if need_build
+      if RUBY_PLATFORM =~ /darwin10/
+        ENV['CFLAGS'] = ENV['CXXFLAGS'] = '-D_XOPEN_SOURCE'
+      end
+      sys("./configure --disable-heap-profiler --disable-heap-checker --disable-debugalloc --disable-shared")
+      sys("make")
     end
-    sys("./configure --disable-heap-profiler --disable-heap-checker --disable-debugalloc --disable-shared")
-    sys("make")
     FileUtils.cp '.libs/libprofiler.a', '../../librubyprofiler.a'
   end
 end
