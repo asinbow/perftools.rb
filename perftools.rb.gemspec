@@ -12,7 +12,6 @@ spec = Gem::Specification.new do |s|
   s.email = "perftools@tmm1.net"
 
   s.has_rdoc = false
-  s.extensions = 'ext/extconf.rb'
   s.bindir = 'bin'
   s.executables << 'pprof.rb'
 
