@@ -33,37 +33,34 @@ dir = File.basename(perftools, '.tar.gz')
 puts "(I'm about to compile google-perftools.. this will definitely take a while)"
 ENV["PATCH_GET"] = '0'
 
-need_build = !`uname -v`.index('Ubuntu')
 Dir.chdir('src') do
-  if need_build
-    FileUtils.rm_rf(dir) if File.exists?(dir)
+  FileUtils.rm_rf(dir) if File.exists?(dir)
 
-    sys("tar zpxvf #{perftools}")
-    Dir.chdir(dir) do
-      if ENV['DEV']
-        sys("git init")
-        sys("git add .")
-        sys("git commit -m 'initial source'")
-      end
-
-      [ ['perftools', true],
-        ['perftools-notests', true],
-        ['perftools-pprof', true],
-        ['perftools-gc', true],
-        ['perftools-osx', RUBY_PLATFORM =~ /darwin/],
-        ['perftools-debug', true],
-        ['perftools-objects', true],
-        ['perftools-frames', true]
-      ].each do |patch, apply|
-        if apply
-          sys("patch -p1 < ../../../patches/#{patch}.patch")
-          sys("git commit -am '#{patch}'") if ENV['DEV']
-        end
-      end
-
-      sys("sed -i -e 's,SpinLock,ISpinLock,g' src/*.cc src/*.h src/base/*.cc src/base/*.h")
-      sys("git commit -am 'rename spinlock'") if ENV['DEV']
+  sys("tar zpxvf #{perftools}")
+  Dir.chdir(dir) do
+    if ENV['DEV']
+      sys("git init")
+      sys("git add .")
+      sys("git commit -m 'initial source'")
     end
+
+    [ ['perftools', true],
+      ['perftools-notests', true],
+      ['perftools-pprof', true],
+      ['perftools-gc', true],
+      ['perftools-osx', RUBY_PLATFORM =~ /darwin/],
+      ['perftools-debug', true],
+      ['perftools-objects', true],
+      ['perftools-frames', true]
+    ].each do |patch, apply|
+      if apply
+        sys("patch -p1 < ../../../patches/#{patch}.patch")
+        sys("git commit -am '#{patch}'") if ENV['DEV']
+      end
+    end
+
+    sys("sed -i -e 's,SpinLock,ISpinLock,g' src/*.cc src/*.h src/base/*.cc src/base/*.h")
+    sys("git commit -am 'rename spinlock'") if ENV['DEV']
   end
 
   Dir.chdir(dir) do
@@ -72,13 +69,11 @@ Dir.chdir('src') do
   end
 
   Dir.chdir(dir) do
-    if need_build
-      if RUBY_PLATFORM =~ /darwin10/
-        ENV['CFLAGS'] = ENV['CXXFLAGS'] = '-D_XOPEN_SOURCE'
-      end
-      sys("./configure --disable-heap-profiler --disable-heap-checker --disable-debugalloc --disable-shared")
-      sys("make")
+    if RUBY_PLATFORM =~ /darwin10/
+      ENV['CFLAGS'] = ENV['CXXFLAGS'] = '-D_XOPEN_SOURCE'
     end
+    sys("./configure --disable-heap-profiler --disable-heap-checker --disable-debugalloc --disable-shared")
+    sys("make")
     FileUtils.cp '.libs/libprofiler.a', '../../librubyprofiler.a'
   end
 end
@@ -98,20 +93,20 @@ if RUBY_VERSION >= "1.9"
   add_define 'RUBY19'
 
   hdrs = proc {
-    have_header("method.h") # exists on 1.9.2
-    have_header("vm_core.h") and
-    have_header("iseq.h") and
-    have_header("insns.inc") and
-    have_header("insns_info.inc")
-  }
+  have_header("method.h") # exists on 1.9.2
+  have_header("vm_core.h") and
+  have_header("iseq.h") and
+  have_header("insns.inc") and
+  have_header("insns_info.inc")
+}
 
-  unless Ruby_core_source::create_makefile_with_core(hdrs, "perftools")
-    STDERR.puts "\n\n"
-    STDERR.puts "***************************************************************************************"
-    STDERR.puts "********************** Ruby_core_source::create_makefile FAILED ***********************"
-    STDERR.puts "***************************************************************************************"
-    exit(1)
-  end
+unless Ruby_core_source::create_makefile_with_core(hdrs, "perftools")
+  STDERR.puts "\n\n"
+  STDERR.puts "***************************************************************************************"
+  STDERR.puts "********************** Ruby_core_source::create_makefile FAILED ***********************"
+  STDERR.puts "***************************************************************************************"
+  exit(1)
+end
 else
   add_define 'RUBY18'
 
